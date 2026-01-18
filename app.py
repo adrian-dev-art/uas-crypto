@@ -8,7 +8,8 @@ import hashlib
 import qrcode
 from io import BytesIO
 from PIL import Image
-from pyzbar.pyzbar import decode
+import cv2
+import numpy as np
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
@@ -90,12 +91,17 @@ def _202231310101_generate_qris(data):
 
 def _202231310101_decode_qris(image):
     """Decode QR Code to extract signature data"""
-    # Convert PIL Image to numpy array for pyzbar
-    import numpy as np
+    # Convert PIL Image to numpy array for OpenCV
     img_array = np.array(image.convert('RGB'))
-    decoded_objects = decode(img_array)
-    if decoded_objects:
-        return decoded_objects[0].data.decode('utf-8')
+    # Convert RGB to BGR for OpenCV
+    img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+
+    # Use OpenCV QR Code detector
+    detector = cv2.QRCodeDetector()
+    data, vertices, _ = detector.detectAndDecode(img_bgr)
+
+    if data:
+        return data
     return None
 
 
