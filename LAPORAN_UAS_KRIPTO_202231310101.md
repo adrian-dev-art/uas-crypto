@@ -515,9 +515,684 @@ st.markdown("""
 
 ### 7.1 Source Code Lengkap
 
-Source code lengkap dapat dilihat di:
-- `app.py` - 365 baris (main application)
-- `utils.py` - 67 baris (utility functions)
+#### 7.1.1 File: `app.py` (Main Application - 367 baris)
+
+**Deskripsi**: File utama aplikasi Streamlit yang mengimplementasi sistem tanda tangan digital RSA dengan QR Code.
+
+```python
+"""
+RSA Digital Signature System with QRIS
+UAS Kriptografi - NPM: 202231310101
+"""
+
+import streamlit as st
+import hashlib
+import qrcode
+from io import BytesIO
+from PIL import Image
+import cv2
+import numpy as np
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
+
+from utils import (
+    _202231310101_serialize_public_key,
+    _202231310101_serialize_private_key,
+    _202231310101_deserialize_public_key,
+    _202231310101_encode_signature_data,
+    _202231310101_decode_signature_data
+)
+
+
+# ============= CORE CRYPTOGRAPHY FUNCTIONS =============
+
+def _202231310101_generate_rsa_keys():
+    """
+    Generate RSA key pair (public and private keys)
+
+    Returns:
+        tuple: (private_key, public_key) - RSA key pair objects
+
+    Dokumentasi:
+    - Menggunakan public_exponent=65537 (standar industri)
+    - Key size 2048-bit untuk keamanan tinggi
+    - Backend menggunakan cryptography library default
+    """
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+        backend=default_backend()
+    )
+    public_key = private_key.public_key()
+    return private_key, public_key
+
+
+def _202231310101_hash_message(message):
+    """
+    Hash message using SHA-256
+
+    Args:
+        message (str): Pesan yang akan di-hash
+
+    Returns:
+        bytes: SHA-256 hash (32 bytes)
+
+    Dokumentasi:
+    - Encode message ke UTF-8 bytes
+    - Hitung SHA-256 hash
+    - Return digest dalam format bytes
+    """
+    return hashlib.sha256(message.encode('utf-8')).digest()
+
+
+def _202231310101_sign_message(message, private_key):
+    """
+    Create digital signature by encrypting hash with private key
+
+    Args:
+        message (str): Pesan yang akan ditandatangani
+        private_key: RSA private key object
+
+    Returns:
+        bytes: Digital signature
+
+    Dokumentasi:
+    - Hash message dengan SHA-256
+    - Gunakan RSA-PSS padding (lebih aman dari PKCS#1 v1.5)
+    - MGF1 dengan SHA-256 untuk mask generation
+    - Salt length maksimum untuk keamanan optimal
+    """
+    message_hash = _202231310101_hash_message(message)
+    signature = private_key.sign(
+        message_hash,
+        padding.PSS(
+            mgf=padding.MGF1(hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH
+        ),
+        hashes.SHA256()
+    )
+    return signature
+
+
+def _202231310101_verify_signature(message, signature, public_key):
+    """
+    Verify digital signature by decrypting with public key
+
+    Args:
+        message (str): Pesan yang akan diverifikasi
+        signature (bytes): Digital signature yang akan diverifikasi
+        public_key: RSA public key object
+
+    Returns:
+        bool: True jika signature valid, False jika tidak
+
+    Dokumentasi:
+    - Hash ulang pesan yang diterima
+    - Decrypt signature dengan public key
+    - Bandingkan hash hasil decrypt dengan hash pesan
+    - Return True jika cocok, False jika error terjadi
+    """
+    message_hash = _202231310101_hash_message(message)
+    try:
+        public_key.verify(
+            signature,
+            message_hash,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        return True
+    except Exception:
+        return False
+
+
+def _202231310101_generate_qris(data):
+    """
+    Generate QRIS (QR Code) from signature data
+
+    Args:
+        data (str): Data JSON yang akan diencode ke QR Code
+
+    Returns:
+        PIL.Image: QR Code image dalam format RGB
+
+    Dokumentasi:
+    - version=None untuk auto-size berdasarkan data
+    - error_correction=L cukup untuk data terstruktur
+    - box_size=10 pixels per module
+    - border=4 modules (minimum untuk QR spec)
+    - Convert ke RGB untuk kompatibilitas Streamlit
+    """
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    # Convert to RGB PIL Image for Streamlit compatibility
+    return img.convert('RGB')
+
+
+def _202231310101_decode_qris(image):
+    """
+    Decode QR Code to extract signature data
+
+    Args:
+        image (PIL.Image): QR Code image
+
+    Returns:
+        str: Data yang di-extract dari QR Code, atau None jika gagal
+
+    Dokumentasi:
+    - Convert PIL Image ke numpy array untuk OpenCV
+    - Convert RGB ke BGR (format OpenCV)
+    - Gunakan OpenCV QRCodeDetector
+    - Return data jika berhasil, None jika gagal decode
+
+    Keuntungan OpenCV:
+    - Tidak perlu library sistem tambahan (zbar)
+    - Compatible dengan Streamlit Cloud deployment
+    - Built-in detector yang reliable
+    """
+    # Convert PIL Image to numpy array for OpenCV
+    img_array = np.array(image.convert('RGB'))
+    # Convert RGB to BGR for OpenCV
+    img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+
+    # Use OpenCV QR Code detector
+    detector = cv2.QRCodeDetector()
+    data, vertices, _ = detector.detectAndDecode(img_bgr)
+
+    if data:
+        return data
+    return None
+
+
+# ============= STREAMLIT UI =============
+
+def _202231310101_main():
+    """
+    Main Streamlit application
+
+    Dokumentasi:
+    - Entry point aplikasi
+    - Setup page configuration
+    - Load custom CSS styling
+    - Render header dan navigation
+    - Route ke sender atau receiver interface
+    """
+
+    # Page configuration
+    st.set_page_config(
+        page_title="RSA Digital Signature System",
+        page_icon="🔒",
+        layout="wide"
+    )
+
+    # Custom CSS for better UI
+    st.markdown("""
+        <style>
+        .main-header {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #1f77b4;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        .sub-header {
+            font-size: 1.2rem;
+            color: #666;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .success-box {
+            padding: 1rem;
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+        .error-box {
+            padding: 1rem;
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+        .info-box {
+            padding: 1rem;
+            background-color: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Header
+    st.markdown('<div class="main-header">Sistem Tanda Tangan Digital RSA</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">UAS Kriptografi - NPM: 202231310101</div>', unsafe_allow_html=True)
+
+    # Mode selection
+    mode = st.sidebar.radio(
+        "Pilih Mode",
+        ["Pengirim Pesan (Sender)", "Penerima Pesan (Receiver)"]
+    )
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Tentang Sistem")
+    st.sidebar.info(
+        "Sistem ini menggunakan:\n"
+        "- **RSA 2048-bit** untuk enkripsi\n"
+        "- **SHA-256** untuk hashing\n"
+        "- **QR Code** untuk distribusi signature"
+    )
+
+    if mode == "Pengirim Pesan (Sender)":
+        _202231310101_sender_interface()
+    else:
+        _202231310101_receiver_interface()
+
+
+def _202231310101_sender_interface():
+    """
+    Sender interface for signing messages
+
+    Dokumentasi:
+    - Generate RSA key pair
+    - Display public/private keys
+    - Input message dari user
+    - Hash message dengan SHA-256
+    - Sign message dengan private key
+    - Generate QR Code berisi message + signature + public key
+    - Download QR Code sebagai PNG
+    """
+    st.header("Pengirim Pesan - Digital Signature")
+
+    # Generate keys section
+    st.subheader("1. Generate RSA Key Pair")
+
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        if st.button("Generate Keys", type="primary"):
+            private_key, public_key = _202231310101_generate_rsa_keys()
+            st.session_state.private_key = private_key
+            st.session_state.public_key = public_key
+            st.session_state.public_key_pem = _202231310101_serialize_public_key(public_key)
+            st.session_state.private_key_pem = _202231310101_serialize_private_key(private_key)
+            st.success("Keys generated successfully!")
+
+    # Display keys if generated
+    if 'public_key_pem' in st.session_state:
+        st.markdown('<div class="info-box">', unsafe_allow_html=True)
+        st.markdown("**Public Key (PEM Format)**")
+        st.code(st.session_state.public_key_pem, language="text")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        with st.expander("Show Private Key (Keep Secret!)"):
+            st.code(st.session_state.private_key_pem, language="text")
+
+        # Message signing section
+        st.markdown("---")
+        st.subheader("2. Sign Message")
+
+        message = st.text_area(
+            "Masukkan pesan yang akan ditandatangani:",
+            height=150,
+            placeholder="Ketik pesan Anda di sini..."
+        )
+
+        if st.button("Sign Message & Generate QRIS", type="primary"):
+            if message.strip():
+                # Hash the message
+                message_hash = _202231310101_hash_message(message)
+                st.markdown('<div class="info-box">', unsafe_allow_html=True)
+                st.markdown("**SHA-256 Hash:**")
+                st.code(message_hash.hex(), language="text")
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                # Sign the message
+                signature = _202231310101_sign_message(message, st.session_state.private_key)
+                st.session_state.signature = signature
+
+                st.markdown('<div class="success-box">', unsafe_allow_html=True)
+                st.markdown("**Digital Signature (Base64):**")
+                import base64
+                st.code(base64.b64encode(signature).decode('utf-8'), language="text")
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                # Generate QRIS
+                st.markdown("---")
+                st.subheader("3. QR Code Generated (QRIS Format)")
+
+                qr_data = _202231310101_encode_signature_data(
+                    message,
+                    signature,
+                    st.session_state.public_key_pem
+                )
+
+                qr_image = _202231310101_generate_qris(qr_data)
+
+                # Display QRIS
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col2:
+                    st.image(qr_image, caption="QR Code - Digital Signature (QRIS Format)", use_container_width=True)
+
+                # Download button
+                buf = BytesIO()
+                qr_image.save(buf, format="PNG")
+                buf.seek(0)
+
+                st.download_button(
+                    label="Download QRIS",
+                    data=buf,
+                    file_name="digital_signature_qris.png",
+                    mime="image/png"
+                )
+
+                st.success("Message signed and QRIS generated successfully!")
+            else:
+                st.error("Please enter a message to sign!")
+    else:
+        st.warning("Please generate RSA keys first!")
+
+
+def _202231310101_receiver_interface():
+    """
+    Receiver interface for verifying signatures
+
+    Dokumentasi:
+    - Upload QR Code image
+    - Decode QR Code untuk extract data
+    - Parse JSON: message + signature + public key
+    - Hash ulang pesan yang diterima
+    - Verify signature dengan public key
+    - Tampilkan hasil verifikasi (VALID/INVALID)
+    """
+    st.header("Penerima Pesan - Signature Verification")
+
+    st.subheader("1. Upload QRIS")
+
+    uploaded_file = st.file_uploader(
+        "Upload QRIS image containing digital signature:",
+        type=["png", "jpg", "jpeg"]
+    )
+
+    if uploaded_file is not None:
+        # Display uploaded QRIS
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            image = Image.open(uploaded_file)
+            st.image(image, caption="Uploaded QR Code", use_container_width=True)
+
+        st.markdown("---")
+        st.subheader("2. Decode & Verify Signature")
+
+        if st.button("Verify Signature", type="primary"):
+            try:
+                # Decode QR Code
+                qr_data = _202231310101_decode_qris(image)
+
+                if qr_data:
+                    # Extract data
+                    data = _202231310101_decode_signature_data(qr_data)
+                    message = data['message']
+                    signature = data['signature']
+                    public_key_pem = data['public_key']
+
+                    # Display message
+                    st.markdown('<div class="info-box">', unsafe_allow_html=True)
+                    st.markdown("**Message Content:**")
+                    st.text_area("", value=message, height=150, disabled=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+                    # Display public key
+                    with st.expander("Show Public Key"):
+                        st.code(public_key_pem, language="text")
+
+                    # Verify signature
+                    public_key = _202231310101_deserialize_public_key(public_key_pem)
+                    is_valid = _202231310101_verify_signature(message, signature, public_key)
+
+                    st.markdown("---")
+                    st.subheader("3. Verification Result")
+
+                    if is_valid:
+                        st.markdown('<div class="success-box">', unsafe_allow_html=True)
+                        st.markdown("### ✓ SIGNATURE VALID")
+                        st.markdown("""
+                        **Status:** Tanda tangan digital **VALID**
+                        **Keaslian:** Pesan ini **ASLI** dan belum dimodifikasi
+                        **Pengirim:** Terverifikasi dengan public key yang diberikan
+                        """)
+                        st.markdown('</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<div class="error-box">', unsafe_allow_html=True)
+                        st.markdown("### ✗ SIGNATURE INVALID")
+                        st.markdown("""
+                        **Status:** Tanda tangan digital **TIDAK VALID**
+                        **Peringatan:** Pesan mungkin telah dimodifikasi atau signature tidak cocok
+                        **Tindakan:** Jangan percaya keaslian pesan ini
+                        """)
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+                    # Display hash for verification
+                    message_hash = _202231310101_hash_message(message)
+                    with st.expander("Show Technical Details"):
+                        st.markdown("**SHA-256 Hash of Message:**")
+                        st.code(message_hash.hex(), language="text")
+                        st.markdown("**Digital Signature (Base64):**")
+                        import base64
+                        st.code(base64.b64encode(signature).decode('utf-8'), language="text")
+
+                else:
+                    st.error("Failed to decode QRIS. Please upload a valid QR code image.")
+
+            except Exception as e:
+                st.markdown('<div class="error-box">', unsafe_allow_html=True)
+                st.markdown(f"### Error")
+                st.markdown(f"**Error Message:** {str(e)}")
+                st.markdown('</div>', unsafe_allow_html=True)
+
+
+if __name__ == "__main__":
+    _202231310101_main()
+```
+
+#### 7.1.2 File: `utils.py` (Utility Functions - 68 baris)
+
+**Deskripsi**: Modul utilitas untuk serialization/deserialization key dan encoding/decoding data untuk QR Code.
+
+```python
+"""
+Utility functions for RSA Digital Signature System
+NPM: 202231310101
+"""
+import base64
+import json
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
+
+
+def _202231310101_serialize_public_key(public_key):
+    """
+    Serialize public key to PEM format string
+
+    Args:
+        public_key: RSA public key object
+
+    Returns:
+        str: Public key dalam format PEM
+
+    Dokumentasi:
+    - Convert RSA key object ke bytes PEM format
+    - Encoding: PEM (Privacy Enhanced Mail)
+    - Format: SubjectPublicKeyInfo (standar X.509)
+    - Decode bytes ke UTF-8 string
+    """
+    pem = public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    return pem.decode('utf-8')
+
+
+def _202231310101_serialize_private_key(private_key):
+    """
+    Serialize private key to PEM format string
+
+    Args:
+        private_key: RSA private key object
+
+    Returns:
+        str: Private key dalam format PEM
+
+    Dokumentasi:
+    - Convert RSA private key object ke bytes PEM
+    - Format: PKCS8 (Public Key Cryptography Standards #8)
+    - Tanpa encryption (NoEncryption) untuk kemudahan demo
+    - CATATAN: Untuk production, gunakan encryption!
+    """
+    pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()
+    )
+    return pem.decode('utf-8')
+
+
+def _202231310101_deserialize_public_key(pem_string):
+    """
+    Deserialize public key from PEM format string
+
+    Args:
+        pem_string (str): Public key dalam format PEM
+
+    Returns:
+        RSA public key object
+
+    Dokumentasi:
+    - Convert PEM string ke bytes (UTF-8 encode)
+    - Load ke RSA public key object
+    - Gunakan default backend dari cryptography library
+    """
+    return serialization.load_pem_public_key(
+        pem_string.encode('utf-8'),
+        backend=default_backend()
+    )
+
+
+def _202231310101_deserialize_private_key(pem_string):
+    """
+    Deserialize private key from PEM format string
+
+    Args:
+        pem_string (str): Private key dalam format PEM
+
+    Returns:
+        RSA private key object
+
+    Dokumentasi:
+    - Convert PEM string ke bytes
+    - Load ke RSA private key object
+    - password=None karena tidak ada encryption
+    """
+    return serialization.load_pem_private_key(
+        pem_string.encode('utf-8'),
+        password=None,
+        backend=default_backend()
+    )
+
+
+def _202231310101_encode_signature_data(message, signature, public_key_pem):
+    """
+    Encode message, signature and public key into JSON format for QR Code
+
+    Args:
+        message (str): Pesan asli
+        signature (bytes): Digital signature bytes
+        public_key_pem (str): Public key dalam PEM format
+
+    Returns:
+        str: JSON string berisi semua data
+
+    Dokumentasi:
+    - Signature di-encode ke Base64 (binary -> text)
+    - Format JSON dengan 3 field: message, signature, public_key
+    - JSON dumps untuk convert dict ke string
+
+    Format Output:
+    {
+        "message": "Pesan asli...",
+        "signature": "Base64EncodedSignature...",
+        "public_key": "-----BEGIN PUBLIC KEY-----\n..."
+    }
+    """
+    data = {
+        'message': message,
+        'signature': base64.b64encode(signature).decode('utf-8'),
+        'public_key': public_key_pem
+    }
+    return json.dumps(data)
+
+
+def _202231310101_decode_signature_data(qr_data):
+    """
+    Decode JSON data from QR Code to extract message, signature and public key
+
+    Args:
+        qr_data (str): JSON string dari QR Code
+
+    Returns:
+        dict: Dictionary berisi message, signature (bytes), dan public_key
+
+    Raises:
+        ValueError: Jika format JSON invalid
+
+    Dokumentasi:
+    - Parse JSON string
+    - Decode signature dari Base64 ke bytes
+    - Return dictionary dengan data siap pakai
+    - Error handling untuk invalid JSON format
+    """
+    try:
+        data = json.loads(qr_data)
+        return {
+            'message': data['message'],
+            'signature': base64.b64decode(data['signature']),
+            'public_key': data['public_key']
+        }
+    except Exception as e:
+        raise ValueError(f"Invalid QR Code data format: {str(e)}")
+```
+
+#### 7.1.3 File: `requirements.txt` (Dependencies)
+
+```txt
+streamlit>=1.31.0
+cryptography>=41.0.0
+qrcode[pil]>=7.4.2
+Pillow>=10.0.0
+opencv-python-headless>=4.8.0
+PyPDF2>=3.0.0
+numpy>=1.24.0
+```
+
+**Dokumentasi Dependencies**:
+- **streamlit**: Web framework untuk UI
+- **cryptography**: Library RSA dan hashing
+- **qrcode[pil]**: Generate QR Code dengan PIL support
+- **Pillow**: Image processing
+- **opencv-python-headless**: QR Code decoding (tanpa GUI dependencies)
+- **PyPDF2**: PDF processing (untuk extract soal UAS)
+- **numpy**: Array operations untuk OpenCV
 
 ### 7.2 Cara Menjalankan Aplikasi
 
@@ -543,45 +1218,200 @@ streamlit run app.py
 
 ### 7.3 File Deliverables
 
-1. ✓ `app.py` - Aplikasi Streamlit utama
-2. ✓ `utils.py` - Utility functions
-3. ✓ `requirements.txt` - Python dependencies
+1. ✓ `app.py` - Aplikasi Streamlit utama (367 baris)
+2. ✓ `utils.py` - Utility functions (68 baris)
+3. ✓ `requirements.txt` - Python dependencies (8 packages)
 4. ✓ `README.md` - Dokumentasi proyek
 5. ✓ `TESTING_GUIDE.md` - Panduan testing
 6. ✓ Laporan ini (LAPORAN_UAS_KRIPTO_202231310101.md)
 
 ### 7.4 Screenshot Aplikasi
 
-**CATATAN UNTUK SCREENSHOT**:
-Karena keterbatasan tools, berikut adalah panduan untuk mengambil screenshot:
+> **PLACEHOLDER GAMBAR**: Silakan ambil screenshot dari aplikasi yang running dan sisipkan di tempat yang ditandai `[GAMBAR-X]`
 
-**Screenshot 1 - Halaman Utama & Sender Interface**:
-- Tampilan header "Sistem Tanda Tangan Digital RSA"
-- Sidebar dengan pilihan mode
-- Tombol "Generate Keys"
+#### Screenshot 1: Halaman Utama & Sender Interface
+`[GAMBAR-1: Tampilan awal aplikasi dengan header, sidebar, dan tombol Generate Keys]`
 
-**Screenshot 2 - Keys Generated**:
-- Public key ditampilkan dalam PEM format
-- Private key dalam expander (collapsed)
-- Form input message
+**Elemen yang harus terlihat**:
+- Header "Sistem Tanda Tangan Digital RSA"
+- Sub-header "UAS Kriptografi - NPM: 202231310101"
+- Sidebar dengan radio button "Pengirim Pesan (Sender)" dan "Penerima Pesan (Receiver)"
+- Info box tentang sistem (RSA 2048-bit, SHA-256, QR Code)
+- Tombol "Generate Keys" berwarna biru (primary)
 
-**Screenshot 3 - Signature Generated**:
-- SHA-256 hash value ditampilkan
-- Digital signature (Base64) ditampilkan
-- QR code image ter-generate
+---
 
-**Screenshot 4 - Receiver Interface**:
-- File uploader untuk QR code
-- QR code ter-upload dan ditampilkan
+#### Screenshot 2: Keys Generated Successfully
+`[GAMBAR-2: Public key dan private key yang sudah di-generate]`
 
-**Screenshot 5 - Verification Result (Valid)**:
-- Message content ditampilkan
-- Green box dengan "SIGNATURE VALID"
-- Status konfirmasi
+**Elemen yang harus terlihat**:
+- Success message "Keys generated successfully!"
+- Info box biru berisi Public Key dalam PEM format
+- Expander "Show Private Key (Keep Secret!)" (bisa collapsed atau expanded)
+- Form input message dengan placeholder "Ketik pesan Anda di sini..."
+- Tombol "Sign Message & Generate QRIS"
 
-**Screenshot 6 - Verification Result (Invalid)**:
-- Red box dengan "SIGNATURE INVALID"
-- Warning message
+**Contoh Public Key yang ditampilkan**:
+```
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
+-----END PUBLIC KEY-----
+```
+
+---
+
+#### Screenshot 3: Message Signed & QR Code Generated
+`[GAMBAR-3: SHA-256 hash, digital signature, dan QR code yang ter-generate]`
+
+**Elemen yang harus terlihat**:
+- Info box dengan SHA-256 Hash (hexadecimal string panjang)
+- Success box hijau dengan Digital Signature (Base64 encoded)
+- Section "3. QR Code Generated (QRIS Format)"
+- QR Code image ditampilkan di center (full scan code)
+- Tombol "Download QRIS" untuk download PNG
+- Success message "Message signed and QRIS generated successfully!"
+
+**Contoh output**:
+- SHA-256 Hash: `3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b`
+- Digital Signature: `kP8xQz...` (Base64, sangat panjang ~340 chars)
+
+---
+
+#### Screenshot 4: Receiver Interface - Upload QR Code
+`[GAMBAR-4: Interface penerima dengan file uploader]`
+
+**Elemen yang harus terlihat**:
+- Header "Penerima Pesan - Signature Verification"
+- Sub-header "1. Upload QRIS"
+- File uploader dengan label "Upload QRIS image containing digital signature:"
+- QR Code image yang sudah di-upload ditampilkan
+- Caption "Uploaded QR Code"
+- Section "2. Decode & Verify Signature"
+- Tombol "Verify Signature" berwarna biru
+
+---
+
+#### Screenshot 5: Verification Result - SIGNATURE VALID
+`[GAMBAR-5: Hasil verifikasi dengan status VALID]`
+
+**Elemen yang harus terlihat**:
+- Info box biru berisi "Message Content" (pesan asli yang di-decode)
+- Expander "Show Public Key" (bisa collapsed)
+- Section "3. Verification Result"
+- **Success box hijau** dengan:
+  - Heading "✓ SIGNATURE VALID"
+  - Status: "Tanda tangan digital **VALID**"
+  - Keaslian: "Pesan ini **ASLI** dan belum dimodifikasi"
+  - Pengirim: "Terverifikasi dengan public key yang diberikan"
+- Expander "Show Technical Details" berisi:
+  - SHA-256 Hash of Message
+  - Digital Signature (Base64)
+
+---
+
+#### Screenshot 6: Verification Result - SIGNATURE INVALID
+`[GAMBAR-6: Hasil verifikasi dengan status INVALID (untuk test tampering)]`
+
+**Elemen yang harus terlihat**:
+- **Error box merah** dengan:
+  - Heading "✗ SIGNATURE INVALID"
+  - Status: "Tanda tangan digital **TIDAK VALID**"
+  - Peringatan: "Pesan mungkin telah dimodifikasi atau signature tidak cocok"
+  - Tindakan: "Jangan percaya keaslian pesan ini"
+
+**Cara mendapatkan screenshot ini**:
+1. Generate signature untuk pesan "Test Message"
+2. Download QR Code
+3. Edit pesan secara manual di JSON atau gunakan QR code yang berbeda
+4. Upload dan verify - akan menghasilkan INVALID
+
+---
+
+#### Screenshot 7: Technical Details (Optional)
+`[GAMBAR-7: Expanded technical details showing hash dan signature]`
+
+**Elemen yang harus terlihat**:
+- Expander "Show Technical Details" dalam keadaan expanded
+- SHA-256 Hash ditampilkan dalam code block
+- Digital Signature (Base64) ditampilkan dalam code block
+
+---
+
+### 7.5 Diagram Alir Sistem
+
+`[GAMBAR-8: Flowchart proses signing dan verification]`
+
+**Flowchart Sender (Signing Process)**:
+```
+START
+  ↓
+Generate RSA Keys (2048-bit)
+  ↓
+Input Message
+  ↓
+Hash Message (SHA-256)
+  ↓
+Sign Hash with Private Key (RSA-PSS)
+  ↓
+Encode (Message + Signature + Public Key) → JSON
+  ↓
+Generate QR Code dari JSON
+  ↓
+Download QR Code (PNG)
+  ↓
+END
+```
+
+**Flowchart Receiver (Verification Process)**:
+```
+START
+  ↓
+Upload QR Code Image
+  ↓
+Decode QR Code → Extract JSON
+  ↓
+Parse JSON: Message, Signature, Public Key
+  ↓
+Hash Received Message (SHA-256)
+  ↓
+Verify Signature with Public Key
+  ↓
+Compare Hashes
+  ↓
+Display Result: VALID or INVALID
+  ↓
+END
+```
+
+---
+
+### 7.6 Contoh Output
+
+#### Contoh Pesan yang Ditandatangani:
+```
+Ini adalah pesan rahasia untuk UAS Kriptografi NPM 202231310101.
+Sistem ini menggunakan RSA 2048-bit dan SHA-256 untuk keamanan maksimal.
+```
+
+#### Contoh SHA-256 Hash:
+```
+3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b
+```
+
+#### Contoh Digital Signature (Base64, dipotong):
+```
+kP8xQzY5L3RjVGhpKzNjN2ZMMHFBPT0...
+(Total ~340 characters dalam Base64 encoding)
+```
+
+#### Contoh JSON di dalam QR Code (formatted):
+```json
+{
+  "message": "Ini adalah pesan rahasia...",
+  "signature": "kP8xQzY5L3RjVGhpKzNjN2ZMMHFBPT0...",
+  "public_key": "-----BEGIN PUBLIC KEY-----\nMIIBIjAN...\n-----END PUBLIC KEY-----\n"
+}
+```
 
 ---
 
