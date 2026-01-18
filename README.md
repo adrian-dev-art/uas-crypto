@@ -88,7 +88,7 @@ streamlit_kripto/
 - `cryptography` - RSA implementation
 - `qrcode` - QR code generation
 - `Pillow` - Image processing
-- `pyzbar` - QR code decoding
+- `opencv-python-headless` - QR code decoding
 - `numpy` - Array processing
 - `PyPDF2` - PDF processing
 
