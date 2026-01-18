@@ -1,0 +1,51 @@
+Ketentuan  Ujian  : 
+▪ Kerjakan  soal-soal di bawah  ini dengan  rapih,  baik dan benar  
+▪ Sifat  ujian adalah  TAKE -HOME  ( Laptop /  Netbook  ) 
+▪ TIDAK  BOLEH  saling  meminjamkan  NOTE  saat pelaksanaan  UAS. 
+UNIVERSITAS  KEBANGSAAN  REPUBLIK INDONESIA  
+UJIAN  AKHIR  SEMESTER  
+Tahun  Akademik  2025-2026 
+ 
+Nama  Mata Kuliah  : KRIPTOGRAFI  
+ Program  Studi  : Teknik Informatika  
+Dosen  : Deni  Suprihadi,  S.T, M.KOM , MCE  
+Waktu  : 4 Hari 
+Sifat  Ujian  : TAKE -HOME  TEST (PROJEK)  
+ 
+ 
+BACA dan PAHAMI dahulu S oal-soal dibawah  ini sebelum  memberikan Jawaban  ! 
+ 
+Seiring dengan meningkatnya kebutuhan akan keamanan dan keaslian data dalam sistem 
+digital, digital signature  dan QRIS  menjadi salah satu mekanisme penting untuk 
+menjamin integritas, autentikasi, dan non -repudiation  suatu pesan. Salah satu algoritma 
+kriptografi kunci publik yang umum digunakan untuk digital signature adalah RSA 
+(Rivest–Shamir–Adleman) . 
+Sebuah institusi ingin me mbuat verifikasi dokumen digital yang dapat digunakan untuk 
+menandatangani dan memverifikasi pesan secara digital  menggunakan Python  dan 
+dideploy menggunakan framework Streamlit  agar mudah diakses  dan men ghasilkan 
+tampilan yang menarik . Dengan ketentuan sebagai berikut :  
+ 
+1. Buatlah  pasangan kunci RSA (public key dan private key)  untuk pengirim pesan , 
+kemudi an pesan asli  di-hash  terlebih dahulu menggunakan algoritma hash (misalnya 
+SHA -256).  
+2. Lakukan Enkr ipsi pada Nilai hash tersebut  menggunakan private key RSA  untuk 
+menghasilkan digital signature  dalam bentuk  QRIS . 
+3. Lakukan verifikasi dengan cara mendekripsi signature menggunakan public key RSA  
+dan membandingkannya dengan hash pesan yang diterima  pada penerima pesan.  
+4. Lakukan Deplo y agar tampila n menarik  terhadap Algoritma yang s udah dibuat pada 
+No.1 sampai dengan No .3 menggunakan Streamlit dengan skenario menampilkan 
+antarmuka pengiriman pesan   yang menghasilkan  digital  signatur e dan QRIS,  
+kemudian menampilkan  antarmuka penerima pesan  digital signa ture dalam bentuk 
+QRIS, sehingga (menampilkan isi  pesan  dan signatur e)  
+ 
+ 
+   
+Contoh Antar  Muka berbasis Streamli t 
+Note :  
+✓ Semua Fungsi  yang d ibuat diawali dengan NPM , sebagai contoh : 
+2021232_ save_enkrip , 2021 1232_ tampil kan, dan seterusn ya. 
+✓ Submit dokumentasi kode dan Antarmuka dalam bentuk PDF dengan Nama File : 
+Jawab_UAS_ KRIPTO _NPM.pdf , serta File Kode Streamlit.  
+ 
+*** Jangan Lupa Berdoa sebelum mengerjakan soal - !! ***  
+
